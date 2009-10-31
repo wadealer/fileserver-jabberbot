@@ -13,7 +13,7 @@ Bot::Bot()    {
       j->logInstance().registerLogHandler(LogLevelDebug, LogAreaAllClasses, this);
       if(BotHost != "") {
           j->setServer(BotHost.toStdString()); }
-      j->disco()->setVersion("ATNF", "0.1.4", "");
+      j->disco()->setVersion("ATNF", "0.1.6", "");
       j->setPresence(PresenceAvailable, 50, "Send *HELP for more information");
       if(ProxyHost != "") {
           tcpcl = new ConnectionTCPClient(j->logInstance(), ProxyHost.toStdString(), ProxyPort);
@@ -57,10 +57,12 @@ void Bot::Connect() {
                            MessFiles << Mes; }
                        if(!MessFiles.isEmpty()) {
                            sub.open(QIODevice::ReadOnly);
+                           QString Jid = out.readLine();
                            foreach(QString M, MessFiles) {
                                while(!out.atEnd()) {
-                                   JID j(out.readLine().remove(0, 1).toStdString());
-                                   SendMessage(j, M);
+                                   Jid = out.readLine();
+                                   JID j(Jid.remove(0, 1).toStdString());
+                                   SendMessage(j, M);                               
                                }
                            }
                            MessFiles.clear();
@@ -97,7 +99,7 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   { //Пыта
        QStringList fields = Body.split(" ");
        QString val = fields.takeFirst();
        val = val.toUpper();
-       if(userJid == tojid) { goto E; }
+       if(userJid == tojid || QString::fromStdString(userJid.full()) == BotJid) { goto E; }
        if(val == "*HELP" || val == "?") {
            QFile in("help.txt");
            in.open(QIODevice::ReadOnly);
@@ -389,12 +391,20 @@ void Bot::onConnect() {
 
 void Bot::onDisconnect(ConnectionError e) {
        switch (e) {
-                case ConnAuthenticationFailed:
+               case ConnAuthenticationFailed:
                         error_report("Authentication failed. Username/password wrong or account does not exist.");
+                        break;
+
+                case ConnUserDisconnected:
+                        error_report("The user (or higher-level protocol) requested a disconnect.");
                         break;
 
                 case ConnNotConnected:
                         error_report("There is no active connection.");
+                        break;
+
+                case ConnCompressionFailed:
+                        error_report("Negotiating/initializing compression failed.");
                         break;
 
                 case ConnTlsFailed:
@@ -416,6 +426,17 @@ void Bot::onDisconnect(ConnectionError e) {
                 case ConnDnsError:
                         error_report("Resolving the server's hostname failed.");
                         break;
+                case ConnConnectionRefused:
+                        error_report("The connection was refused by the server (on the socket level).");
+                        break;
+
+                case ConnParseError:
+                        error_report("An XML parse error occurred.");
+                        break;
+
+                case ConnIoError:
+                        error_report("An I/O error occured.");
+                        break;
 
                 case ConnProxyNoSupportedAuth:
                         error_report("The HTTP/SOCKS5 proxy requires an unsupported auth mechanism.");
@@ -429,6 +450,10 @@ void Bot::onDisconnect(ConnectionError e) {
                         error_report("The HTTP/SOCKS5 proxy requires authentication.");
                         break;
 
+                case ConnStreamClosed:
+                        error_report("The stream has been closed (by the server).");
+                        break;
+
                 case ConnStreamVersionError:
                         error_report("The incoming stream's version is not supported");
                         break;
@@ -437,8 +462,13 @@ void Bot::onDisconnect(ConnectionError e) {
                         error_report("A stream error occured. The stream has been closed.");
                         break;
 
+                case ConnNoError:
+                        error_report("Disconnected from server without errors");
+                        break;
+
                  }
                         error_report("Disconnected." );
+                        j->disconnect();
                         ping = false;
                         if(ProxyHost != "") {                            
                              tcpcl->cleanup();
@@ -447,7 +477,7 @@ void Bot::onDisconnect(ConnectionError e) {
 #ifdef Q_WS_WIN
                         Sleep(30000);
 #else
-                        sleep (3);
+                        sleep (30);
 #endif
                         error_report("Reconnect...");
                         Connect();
