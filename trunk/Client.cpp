@@ -13,7 +13,7 @@ Bot::Bot()    {
       j->logInstance().registerLogHandler(LogLevelDebug, LogAreaAllClasses, this);
       if(BotHost != "") {
           j->setServer(BotHost.toStdString()); }
-      j->disco()->setVersion("ATNF", "0.1.6", "");
+      j->disco()->setVersion("ATNF", "0.1.7", "");
       j->setPresence(PresenceAvailable, 50, "Send *HELP for more information");
       if(ProxyHost != "") {
           tcpcl = new ConnectionTCPClient(j->logInstance(), ProxyHost.toStdString(), ProxyPort);
@@ -61,7 +61,7 @@ void Bot::Connect() {
                            foreach(QString M, MessFiles) {
                                while(!out.atEnd()) {
                                    Jid = out.readLine();
-                                   JID j(Jid.remove(0, 1).toStdString());
+                                   JID j(Jid.toStdString());
                                    SendMessage(j, M);                               
                                }
                            }
@@ -110,18 +110,16 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   { //Пыта
        if(val == "*SUB") {           
            QFile sub("sub.txt");
            QTextStream out(&sub);
-           if(!sub.exists()) {
-               sub.open(QIODevice::WriteOnly);
-               out << "\n";
-               sub.close();
-           }
-           sub.open(QIODevice::ReadWrite);
-           while(!out.atEnd()) {               
-               if(out.readLine().remove(0, 1) == QString::fromStdString(userJid.bare())) {
+           if(sub.open(QIODevice::ReadWrite)) {               
+               while(!out.atEnd()) {
+               if(out.readLine() == QString::fromStdString(userJid.bare())) {
                    session->send("Вы уже подписаны!");
-                   goto E;                }
+                   goto E;
+               }
+           }
            }
            out.seek(sub.size());
+           out.setGenerateByteOrderMark(false);
            out << QString::fromStdString(userJid.bare()) << endl;
            session->send("Подписаны!");
            goto E;
@@ -259,6 +257,7 @@ void Bot::Loger(JID userJid, QString Mes) {
        QTextStream out(&file);
        out.seek(file.size());              
        QString nw = QDateTime::currentDateTime().toString("dd.MM.yyyy hh:mm:ss") + " " + QString::fromStdString(userJid.full()) + ": " + Mes;
+       out.setGenerateByteOrderMark(false);
        out << nw << endl;
    }
 
@@ -381,6 +380,7 @@ void Bot::error_report(std::string message) { //Вывод сообщений в
        out.seek(file.size());
        }
        QString nw = QString::fromStdString(message);
+       out.setGenerateByteOrderMark(false);
        out << time << " " << nw << endl;
        return; }
 
