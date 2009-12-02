@@ -57,7 +57,7 @@ void Bot::Connect() {
                            MessFiles << Mes; }
                        if(!MessFiles.isEmpty()) {
                            sub.open(QIODevice::ReadOnly);
-                           QString Jid = out.readLine();
+                           QString Jid;
                            foreach(QString M, MessFiles) {
                                while(!out.atEnd()) {
                                    Jid = out.readLine();
