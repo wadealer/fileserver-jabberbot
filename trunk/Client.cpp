@@ -13,7 +13,7 @@ Bot::Bot()    {
       j->logInstance().registerLogHandler(LogLevelDebug, LogAreaAllClasses, this);
       if(BotHost != "") {
           j->setServer(BotHost.toStdString()); }
-      j->disco()->setVersion("ATNF", "0.1.7", "");
+      j->disco()->setVersion("ATNF", "0.1.8", "");
       j->setPresence(PresenceAvailable, 50, "Send *HELP for more information");
       if(ProxyHost != "") {
           tcpcl = new ConnectionTCPClient(j->logInstance(), ProxyHost.toStdString(), ProxyPort);
@@ -122,6 +122,29 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   { //Пыта
            out.setGenerateByteOrderMark(false);
            out << QString::fromStdString(userJid.bare()) << endl;
            session->send("Подписаны!");
+           goto E;
+       }
+
+       if(val == "*UNSUB") {
+           QStringList List;
+           QFile sub("sub.txt");
+           QTextStream out(&sub);
+           if(sub.open(QIODevice::ReadWrite)) {
+               while(!out.atEnd()) {
+                   QString Line = out.readLine();
+                   if(Line != QString::fromStdString(userJid.bare())) {
+                       List << Line;
+                   }
+               }
+               sub.remove();
+               if(sub.open(QIODevice::ReadWrite)) {
+                   while(!List.isEmpty()) {
+                       out.setGenerateByteOrderMark(false);
+                       out << List.takeFirst() << endl;
+                   }
+               }
+               session->send("Вы отказались от рассылки!");
+           }
            goto E;
        }
 
@@ -309,6 +332,10 @@ bool Bot::ReadSettings() {
          if(val == "port") {
              QString port = fields.takeLast();
              BotPort = port.toInt(); }
+         if(val == "separator") {
+             Separator = fields.takeLast();  }
+         if(val == "prefix" ) {
+             Prefix = fields.takeLast();     }
          if(val == "path") {
              BotFolders << fields.takeLast();
          }
@@ -361,8 +388,17 @@ void Bot::CreateMessage(MessageSession* session, double dateLong) {  //Здес�
            if(!MessFiles.isEmpty()) {
                foreach(QString M, MessFiles) {
                session->send(M.toStdString());            }
+           }           
+           else {
+               QString M = val;
+               QStringList L = M.split(QDir::separator());
+               M = L.takeFirst();
+               M = Prefix;
+               while(!L.isEmpty()) {
+                   M +=  Separator + L.takeFirst();
+               }
+               session->send("В каталоге " + M.toStdString() + " новых файлов нет.");
            }
-           else { session->send("В каталоге " + val.toStdString() + " новых файлов нет.");    }
        }
        Mes = "Готово!";
        session->send(Mes.toStdString());
