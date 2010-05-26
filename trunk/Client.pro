@@ -9,6 +9,6 @@ DEPENDPATH += .
 INCLUDEPATH += .
 
 # Input
-SOURCES += Client.cpp
-HEADERS += main.h \
-    Client.h
+SOURCES += Client.cpp \
+    main.cpp
+HEADERS += Client.h
