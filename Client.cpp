@@ -1,10 +1,28 @@
-#include <main.h>
-#include <Client.h>
+#include "Client.h"
+
+#include <QStringList>
+#include <QFileInfo>
+#include <QDateTime>
+#include <QTextStream>
 
 using namespace gloox;
 
 Bot::Bot()    {
-      ping = false;
+      AdminJid = "";
+      BotJid = "a@b/c";
+      BotHost = "";
+      BotPass = "";
+      ProxyHost = "";
+      ProxyPort = 3128;
+      BotPort = 5222;
+      BotFolders.clear();
+      Separator = "/";
+      Prefix = "Server";
+
+    if(!ReadSettings())
+        return;
+    ping = false;
+
       j = new Client(BotJid.toStdString(), BotPass.toStdString(), BotPort);
       RM = new RosterManager(j);
       j->registerSubscriptionHandler(this);
@@ -13,7 +31,7 @@ Bot::Bot()    {
       j->logInstance().registerLogHandler(LogLevelDebug, LogAreaAllClasses, this);
       if(BotHost != "") {
           j->setServer(BotHost.toStdString()); }
-      j->disco()->setVersion("ATNF", "0.1.8", "");
+      j->disco()->setVersion("ATNF", "0.2.0", "");
       j->setPresence(PresenceAvailable, 50, "Send *HELP for more information");
       if(ProxyHost != "") {
           tcpcl = new ConnectionTCPClient(j->logInstance(), ProxyHost.toStdString(), ProxyPort);
@@ -99,33 +117,33 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   { //Пыта
        QStringList fields = Body.split(" ");
        QString val = fields.takeFirst();
        val = val.toUpper();
-       if(userJid == tojid || QString::fromStdString(userJid.full()) == BotJid) { goto E; }
+       if(userJid == tojid || QString::fromStdString(userJid.full()) == BotJid)
+           return;
+
        if(val == "*HELP" || val == "?") {
            QFile in("help.txt");
            in.open(QIODevice::ReadOnly);
            QTextStream n(&in);
            Mes = n.readAll();
-           session->send(Mes.toStdString()); goto E; }
-
-       if(val == "*SUB") {           
+           session->send(Mes.toStdString());
+       }
+       else if(val == "*SUB") {
            QFile sub("sub.txt");
            QTextStream out(&sub);
            if(sub.open(QIODevice::ReadWrite)) {               
                while(!out.atEnd()) {
-               if(out.readLine() == QString::fromStdString(userJid.bare())) {
-                   session->send("Вы уже подписаны!");
-                   goto E;
+                   if(out.readLine() == QString::fromStdString(userJid.bare())) {
+                       session->send(QObject::trUtf8("Вы уже подписаны!").toStdString());
+                       return;
+                   }
                }
-           }
-           }
-           out.seek(sub.size());
-           out.setGenerateByteOrderMark(false);
-           out << QString::fromStdString(userJid.bare()) << endl;
-           session->send("Подписаны!");
-           goto E;
+               out.seek(sub.size());
+               out.setGenerateByteOrderMark(false);
+               out << QString::fromStdString(userJid.bare()) << endl;
+               session->send(QObject::trUtf8("Подписаны!").toStdString());
+           }           
        }
-
-       if(val == "*UNSUB") {
+       else if(val == "*UNSUB") {
            QStringList List;
            QFile sub("sub.txt");
            QTextStream out(&sub);
@@ -143,136 +161,143 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   { //Пыта
                        out << List.takeFirst() << endl;
                    }
                }
-               session->send("Вы отказались от рассылки!");
+               session->send(QObject::trUtf8("Вы отказались от рассылки!").toStdString());
            }
-           goto E;
        }
-
-       if(val == "*SINCE") {
+       else if(val == "*SINCE") {
             for(int i = Sessions.size(); i > 0;) {
                M_Session &S = Sessions[--i];
                if (S.session == session) {
                    S.block = false;
                    if(S.Since > 5) {
-                       session->send("Не надоедайте Боту! :)");
-                       goto E;                   }
-                   else {
+                       session->send(QObject::trUtf8("Не надоедайте Боту! :)").toStdString());
+                   } else {
                        bool k = fields.isEmpty();
-                       if(k)  { session->send("Неправильная дата!"); goto E;}
-                       QString D = fields.takeFirst();
-                       int l = D.length();
-                       if(l != 8)   { session->send("Неправильная дата!"); goto E;}
-                       int test = D.toInt();
-                       if(test < 20080101) { session->send("Дата старее 2008 года!"); goto E; }
-                       D += "000000";
-                       double Dd = D.toDouble();
-                       CreateMessage(session, Dd);
-                       S.Since++;
-                       goto E;       }
+                       if(k)
+                           session->send(QObject::trUtf8("Неправильная дата!").toStdString());
+                       else {
+                           QString D = fields.takeFirst();
+                           int l = D.length();
+                           if(l != 8)
+                               session->send(QObject::trUtf8("Неправильная дата!").toStdString());
+                           else {
+                               int test = D.toInt();
+                               if(test < 20080101)
+                                   session->send(QObject::trUtf8("Дата старее 2008 года!").toStdString());
+                               else {
+                                   D += "000000";
+                                   double Dd = D.toDouble();
+                                   CreateMessage(session, Dd);
+                                   S.Since++;
+                               }
+                           }
+                       }
+                   }
                }
            }
         }
-
-       if(val == "*ALL") {
+       else if(val == "*ALL") {
            for(int i = Sessions.size(); i > 0;) {
                M_Session &S = Sessions[--i];
                if (S.session == session) {
                    S.block = false;
-                   if(S.All) {
-                       session->send("Сегодня от Вас уже был такой запрос. Хватит! ;)");
-                       goto E; }
+                   if(S.All)
+                       session->send(QObject::trUtf8("Сегодня от Вас уже был такой запрос. Хватит! ;)").toStdString());
                    else {
                        QString D = "19500101000000";
                        double d = D.toDouble();
                        CreateMessage(session, d);
                        S.All = true;
-                       goto E; }
+                   }
                }
            }
        }
-
-       if(val == "*SEND") {
+       else if(val == "*SEND") {
+           if(!AdminJid.isEmpty() && QString::fromStdString(userJid.bare()) != AdminJid)
+               return;
            fields = Body.split(":");
            Mes = fields.takeLast();
            bool k = fields.isEmpty();
-           if(k)  { session->send("Что-то не так!"); goto E;}
-           val = fields.takeFirst();
-           fields = val.split(" ");
-           val = fields.takeLast();
-           tojid = val.toStdString();
-           SendMessage(tojid, Mes);
-          // SendMessage(userJid, "OK");
-           goto E;      }
-
-       if(val == "*NEW") {
+           if(k)
+               session->send(QObject::trUtf8("Что-то не так!").toStdString());
+           else {
+               val = fields.takeFirst();
+               fields = val.split(" ");
+               val = fields.takeLast();
+               tojid = val.toStdString();
+               SendMessage(tojid, Mes);
+           }
+       }
+       else if(val == "*NEW") {
             for(int i = Sessions.size(); i > 0;) {
                M_Session &S = Sessions[--i];
                if (S.session == session) {
                    S.block = false;
-                   if(S.New) {
-                       session->send("Сегодня от Вас уже был такой запрос. Хватит! ;)");
-                       goto E; }
+                   if(S.New)
+                       session->send(QObject::trUtf8("Сегодня от Вас уже был такой запрос. Хватит! ;)").toStdString());
                    else {
                        DateToMessage(session);
                        S.New = true;
-                       goto E;  }
+                   }
                }
            }
         }
-
-       if(val == "*QUIT") {
+       else if(val == "*QUIT") {
+           if(!AdminJid.isEmpty() && QString::fromStdString(userJid.bare()) != AdminJid)
+               return;
            j->disconnect();
-           goto E; }
-
-       if(val == ";-)" || val == ";)" || val == ":)" || val == ":-)" || val == ":-(" || val == "8-)" || val == ":-D" || val == ":-P" )
-       { session->send(" :-P ");
-           goto E; }
-
-       if(val == "*MULTYSEND") {
+       }
+       else if(val == ";-)" || val == ";)" || val == ":)" || val == ":-)" || val == ":-(" || val == "8-)" || val == ":-D" || val == ":-P" )
+           session->send(" :-P ");
+       else if(val == "*MULTYSEND") {
+           if(!AdminJid.isEmpty() && QString::fromStdString(userJid.bare()) != AdminJid)
+               return;
            while(!fields.isEmpty()) {
                Mes += fields.takeFirst() + " "; }
            QDir dir("Data");
            foreach(QString J, dir.entryList(QDir::Files)) {
                JID Jid(J.toStdString());
-               SendMessage(Jid, Mes); }
-           goto E;       }
-
-       for(int i = Sessions.size(); i > 0;) {
+               SendMessage(Jid, Mes);
+           }
+       }
+       else {
+           for(int i = Sessions.size(); i > 0;) {
                M_Session &S = Sessions[--i];
                if (S.session == session) {
-                   if (S.block) { goto E;    }
-                    else {
-                           session->send("Это не команда! Пошлите *HELP чтобы узнать больше!");
+                   if (S.block)
+                       return;
+                   else {
+                           session->send(QObject::trUtf8("Это не команда! Пошлите *HELP чтобы узнать больше!").toStdString());
                            if(!S.N) {
                                S.s_time = QTime::currentTime().toString("hhmmss").toLong();
                                S.N++;
-                               goto E;              }
+                           }
                            else {
                                S.N++;
                                int T = QTime::currentTime().toString("hhmmss").toLong()  - S.s_time;
                                if(S.N == 5 && T < 5) {
-                                   S.block = true;                                   
-                                   goto E;            }
+                                   S.block = true;
+                               }
                                else {
-                                   if(T > 5) {
-                                       S.N = 0;      }
+                                   if(T > 5)
+                                       S.N = 0;
                                }
                            }
-                       }                    
-                    goto E;
+                       }
                 }
-           }        
-
-       E:  {}
-    }
+           }
+       }
+}
 
 void Bot::SendMessage(JID jid, QString mes) { //Отсылка сообщений
        std::string Mes = mes.toStdString();
        Stanza *s = Stanza::createMessageStanza(jid.full(), Mes);
-       j->send(s);  }
+       j->send(s);
+   }
 
 bool Bot::onTLSConnect(const CertInfo &info) {
-        return true; }
+        return true;
+    }
 
 void Bot::Loger(JID userJid, QString Mes) {       
        QFile file("log.txt");
@@ -288,7 +313,22 @@ void Bot::FilesToMessage(QString &Mess, int &Max, const QString &path, double da
     QDir dir(path);
     QString M;
     QStringList L;
-    foreach (QString file, dir.entryList(QDir::Files)) {
+    foreach (QString file, dir.entryList(QDir::Files)) {     
+     bool use = false;
+     if(extentions.isEmpty())
+         use = true;
+     else {
+         foreach(QString ext, extentions) {
+             QRegExp r = QRegExp(ext, Qt::CaseInsensitive, QRegExp::Wildcard);
+             if(file.contains(r)){
+                 use = true;
+                 break;
+             }
+         }
+     }
+     if(!use)
+         continue;
+
      double DateTimeLong = QFileInfo(dir, file).created().toString("yyyyMMddhhmmss").toDouble();
      if(DateTimeLong > dateIDLong) {
          M = path + QDir::separator() + file;
@@ -296,57 +336,72 @@ void Bot::FilesToMessage(QString &Mess, int &Max, const QString &path, double da
          M = L.takeFirst();
          M = Prefix;
          while(!L.isEmpty()) {
-             M +=  Separator + L.takeFirst();  }
+             M +=  Separator + L.takeFirst();
+         }
          Mess += M + "\n";
          Max++;
          if(Max > 200) {
             MessFiles << Mess;
             Max = 0;
-            Mess = ""; }
+            Mess = "";
+        }
      }
  }
     foreach (QString subDir, dir.entryList(QDir::Dirs
                                            | QDir::NoDotAndDotDot)) {
         FilesToMessage(Mess, Max, path + QDir::separator() + subDir, dateIDLong);
-    } 
     }
+}
 
 bool Bot::ReadSettings() {
     using namespace std;
     QFile file("settings.ini");
     if(!file.exists()) {
         cerr << "Cannot open settings file" << endl;
-    return 0; }
-    file.open(QFile::ReadOnly);
+        return false;
+    }
+    if(!file.open(QFile::ReadOnly)) {
+        cerr << "Cannot open settings file" << endl;
+        return false;
+    }
     QTextStream inFile(&file);
     while (!inFile.atEnd()){
          QString Settings = inFile.readLine();
-         QStringList fields = Settings.split(" ");
+         QStringList fields = Settings.split(" ", QString::SkipEmptyParts);
+         if(fields.count() < 2)
+             continue;
          QString val = fields.takeFirst();
          if(val == "jid") {
               BotJid = fields.takeLast(); }
-         if(val == "host") {
+         else if(val == "host") {
              BotHost = fields.takeLast(); }
-         if(val == "password") {
+         else if(val == "password") {
              BotPass = fields.takeLast(); }
-         if(val == "port") {
+         else if(val == "port") {
              QString port = fields.takeLast();
              BotPort = port.toInt(); }
-         if(val == "separator") {
+         else if(val == "separator") {
              Separator = fields.takeLast();  }
-         if(val == "prefix" ) {
+         else if(val == "prefix" ) {
              Prefix = fields.takeLast();     }
-         if(val == "path") {
-             BotFolders << fields.takeLast();
-         }
-         if(val == "proxyhost") {
+         else if(val == "path") {
+             BotFolders << fields.takeLast(); }
+         else if(val == "proxyhost") {
              ProxyHost = fields.takeLast(); }
-         if(val == "proxyport") {
+         else if(val == "proxyport") {
              QString p = fields.takeLast();
-             ProxyPort = p.toInt();
+             ProxyPort = p.toInt();  }
+         else if(val == "admin") {
+             AdminJid = fields.takeLast(); }
+         else if(val == "ext") {
+             while(!fields.isEmpty()) {
+                 QString ext = fields.takeFirst();
+                 if(ext != "=")
+                     extentions.append(ext);
+             }
          }
      }
-    return 1;
+    return true;
 }
 
 double Bot::ReadDate(const QString &path) {
@@ -376,7 +431,7 @@ void Bot::DateToMessage(MessageSession* session)
 
 void Bot::CreateMessage(MessageSession* session, double dateLong) {  //Здесь мы считываем файлы
        QString Mes;
-       Mes = "Подождите........";
+       Mes = QObject::trUtf8("Подождите........");
        session->send(Mes.toStdString());
        foreach (QString val, BotFolders) {
            int Max = 0;
@@ -397,10 +452,11 @@ void Bot::CreateMessage(MessageSession* session, double dateLong) {  //Здес�
                while(!L.isEmpty()) {
                    M +=  Separator + L.takeFirst();
                }
-               session->send("В каталоге " + M.toStdString() + " новых файлов нет.");
+               session->send(QObject::trUtf8("В каталоге ").toStdString()
+                             + M.toStdString() + QObject::trUtf8(" новых файлов нет.").toStdString());
            }
        }
-       Mes = "Готово!";
+       Mes = QObject::trUtf8("Готово!");
        session->send(Mes.toStdString());
        MessFiles.clear();
     }
@@ -523,7 +579,7 @@ void Bot::handleSubscription (Stanza *stanza) { //Аворизируем все�
      JID userJid = stanza->from();
      Loger(userJid, "Subscription request");
      RM->ackSubscriptionRequest(userJid, true);
-     SendMessage(userJid, " Бот \"Are There New Files\" приветствует Вас!\n Чтобы узнать больше отправьте *HELP");
+     SendMessage(userJid, QObject::trUtf8(" Бот \"Are There New Files\" приветствует Вас!\n Чтобы узнать больше отправьте *HELP"));
      std::string ID = userJid.bare();
      QString id = "Data";
      id += QDir::separator() + QString::fromStdString(ID);    
@@ -533,23 +589,3 @@ void Bot::handleSubscription (Stanza *stanza) { //Аворизируем все�
      QTextStream out(&outmes);
      out << CDate << endl;
  }
-
-int main( int argc, char* argv[] ) {   
-    codec = QTextCodec::codecForName("UTF-8");
-    QTextCodec::setCodecForLocale(codec);
-    QTextCodec::setCodecForCStrings(codec);
-    QDir Data("Data");
-    if(!Data.exists()) {
-        QDir P = QDir::current();
-        bool r = P.mkdir("Data");
-        if(!r) {
-             std::cerr << "Cannot create Data folder" << endl;
-             return 0;}
-    }
-    bool Res;
-    Res = b->ReadSettings();
-    if(!Res) { return Res; }
-    b = new Bot();
-    return Res;
-}
-
