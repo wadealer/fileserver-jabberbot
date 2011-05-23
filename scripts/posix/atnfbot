@@ -1,0 +1,35 @@
+#! /bin/sh
+
+io_start() {
+	echo "Starting ATNF"
+	start-stop-daemon --start --quiet -b -d ~/.atnf/ --exec ~/.atnf/atnf
+	return 0
+}
+
+io_stop() {
+	echo "Stopping ATNF"
+	start-stop-daemon --stop --quiet --exec ~/.atnf/atnf
+	return 0
+}
+
+case "$1" in
+	start)
+		io_start
+		;;
+
+	stop)
+		io_stop
+		;;
+
+	restart)
+		io_stop
+		io_start
+		;;
+
+	status)
+		echo "This function isn't working yet"
+		;;
+
+esac
+
+:
