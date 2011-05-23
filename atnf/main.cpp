@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QTextCodec>
+#include <QDir>
 
 #include "client.h"
 
@@ -15,7 +16,10 @@ int main( int argc, char* argv[] ) {
 			return 0;
 		}
 	}
+	int ret = 0;
 	Bot b;
-	app.exec();
+	if(!b.start()) {
+		ret = app.exec();
+	}
+	return ret;
 }
-

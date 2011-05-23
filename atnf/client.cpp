@@ -1,14 +1,20 @@
 #include "client.h"
 
-#include <QStringList>
 #include <QFileInfo>
 #include <QDateTime>
 #include <QTextStream>
+#include <QDir>
+#include <QTimer>
+#include <QCoreApplication>
 
 using namespace gloox;
 
 Bot::Bot()
-	: AdminJid("")
+	: QObject(0)
+	, RM(0)
+	, tcpcl(0)
+	, conn(0)
+	, AdminJid("")
 	, BotJid("a@b/c")
 	, BotHost("")
 	, BotPass("")
@@ -17,11 +23,11 @@ Bot::Bot()
 	, BotPort(5222)
 	, Separator("/")
 	, Prefix("Server")
+	, ping(false)
+	, doQuit(false)
 {
 	if(!readSettings())
 		return;
-
-	ping = false;
 
 	j = new Client(BotJid.toStdString(), BotPass.toStdString(), BotPort);
 	RM = new RosterManager(j);
@@ -38,16 +44,27 @@ Bot::Bot()
 		conn = new ConnectionHTTPProxy(j, tcpcl, j->logInstance(), BotHost.toStdString(), BotPort);
 		j->setConnectionImpl(conn);
 	}
-	connect();
 }
 
 Bot::~Bot()
 {
 	j->disconnect();
-	delete j;
+	j->removeConnectionListener(this);
+	j->removeSubscriptionHandler(this);
 	delete RM;
-	delete conn;
-	delete tcpcl;
+	if(tcpcl) {
+		conn->disconnect();
+		tcpcl->disconnect();
+		delete tcpcl;
+		delete conn;
+	}
+	delete j;
+}
+
+int Bot::start()
+{
+	connect();
+	return doQuit ? 1 : 0;
 }
 
 void Bot::connect()
@@ -55,11 +72,11 @@ void Bot::connect()
 	int Time;
 	QTime T;
 	QString Mes;
-	QString path = "lastcheck.txt";
+	static const QString path = "lastcheck.txt";
 	j->connect(false);
 	je = j->recv(20000000);
 	ce = ConnNoError;
-	if(ProxyHost != "") {
+	if(conn) {
 		ce = conn->recv(1000);
 	}
 	while(je == ConnNoError && ce == ConnNoError)  {
@@ -259,7 +276,7 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   //Пытае
 			}
 		}
         }
-	else if(val == "*QUIT") {
+	else if(val == "*RESTART") {
 		if(!AdminJid.isEmpty() && QString::fromStdString(userJid.bare()) != AdminJid)
 			return;
 		j->disconnect();
@@ -277,6 +294,12 @@ void Bot::handleMessage( Stanza* stanza, MessageSession* session)   //Пытае
 			JID Jid(J.toStdString());
 			sendMessage(Jid, Mes);
 		}
+	}
+	else if(val == "*QUIT") {
+		if(!AdminJid.isEmpty() && QString::fromStdString(userJid.bare()) != AdminJid)
+			return;
+		doQuit = true;
+		j->disconnect();
 	}
 	else {
 		for(int i = Sessions.size(); i > 0;) {
@@ -394,27 +417,37 @@ bool Bot::readSettings()
 			continue;
 		QString val = fields.takeFirst();
 		if(val == "jid") {
-			BotJid = fields.takeLast(); }
+			BotJid = fields.takeLast();
+		}
 		else if(val == "host") {
-			BotHost = fields.takeLast(); }
+			BotHost = fields.takeLast();
+		}
 		else if(val == "password") {
-			BotPass = fields.takeLast(); }
+			BotPass = fields.takeLast();
+		}
 		else if(val == "port") {
 			QString port = fields.takeLast();
-			BotPort = port.toInt(); }
+			BotPort = port.toInt();
+		}
 		else if(val == "separator") {
-			Separator = fields.takeLast();  }
+			Separator = fields.takeLast();
+		}
 		else if(val == "prefix" ) {
-			Prefix = fields.takeLast();     }
+			Prefix = fields.takeLast();
+		}
 		else if(val == "path") {
-			BotFolders << fields.takeLast(); }
+			BotFolders << fields.takeLast();
+		}
 		else if(val == "proxyhost") {
-			ProxyHost = fields.takeLast(); }
+			ProxyHost = fields.takeLast();
+		}
 		else if(val == "proxyport") {
 			QString p = fields.takeLast();
-			ProxyPort = p.toInt();  }
+			ProxyPort = p.toInt();
+		}
 		else if(val == "admin") {
-			AdminJid = fields.takeLast(); }
+			AdminJid = fields.takeLast();
+		}
 		else if(val == "ext") {
 			while(!fields.isEmpty()) {
 				QString ext = fields.takeFirst();
@@ -592,15 +625,22 @@ void Bot::onDisconnect(ConnectionError e)
 	error_report("Disconnected." );
 	j->disconnect();
 	ping = false;
-	if(ProxyHost != "") {
+	if(tcpcl) {
 		tcpcl->cleanup();
 		conn->cleanup();
 	}
 
-	QTime t;
-	t.start();
-	while(t.elapsed() < 30000) {}
+	if(doQuit) {
+		error_report("Exit program");
+		QCoreApplication::exit(0);
+		return;
+	}
 
+	QTimer::singleShot(30000, this, SLOT(reconnect()));
+}
+
+void Bot::reconnect()
+{
 	error_report("Reconnect...");
 	connect();
 }

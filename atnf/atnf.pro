@@ -2,7 +2,7 @@
 TEMPLATE = app
 TARGET = atnf
 LIBS = -lgloox
-CONFIG += console
+CONFIG += console release
 DEPENDPATH += .
 INCLUDEPATH += .
 

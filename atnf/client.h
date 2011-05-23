@@ -10,17 +10,23 @@
 #include <gloox/disco.h>
 
 #include <QVector>
-#include <QDir>
+#include <QStringList>
 #include <iostream>
+
 
 using namespace gloox;
 
-class Bot : public MessageSessionHandler, MessageHandler, ConnectionListener, SubscriptionHandler, LogHandler
+class Bot : public QObject, public MessageSessionHandler, MessageHandler, ConnectionListener, SubscriptionHandler, LogHandler
 {
-
+	Q_OBJECT
 public:
 	Bot();
 	virtual ~Bot();
+
+	int start();
+
+private slots:
+	void reconnect();
 
 private:
 	void filesToMessage(QString &Mess, int &Max, const QString &path, double dateIDLong);
@@ -47,8 +53,7 @@ private:
 	JID tojid;
 	ConnectionError je, ce;
 	ConnectionTCPClient* tcpcl;
-	ConnectionHTTPProxy* conn;
-	bool ping;
+	ConnectionHTTPProxy* conn;	
 
 	QString AdminJid;
 	QString BotJid;
@@ -61,6 +66,8 @@ private:
 	QString Separator;
 	QString Prefix;
 	QStringList extentions;
+
+	bool ping, doQuit;
 
 	struct M_Session {
 		MessageSession * session;
